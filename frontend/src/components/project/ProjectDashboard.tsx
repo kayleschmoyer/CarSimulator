@@ -56,11 +56,13 @@ export default function ProjectDashboard() {
     if (approvedLevels.length === 0) return;
     const startLevel = approvedLevels.find((l) => l.id === startLevelId) ?? approvedLevels[0];
     const entryPoint = startLevel.features.entry_points[0];
+    // Spawn in the first driving lane centre if no entry point defined
+    const defaultSpawn = { x: 50, y: 15 };
     const spawn: SimulationSpawnPoint = {
       level_id: startLevel.id,
-      position: entryPoint?.position ?? { x: 10, y: 15 },
+      position: entryPoint?.position ?? defaultSpawn,
       elevation: startLevel.floor_elevation,
-      direction: entryPoint?.direction ?? 0,
+      direction: entryPoint?.direction ?? Math.PI,
     };
     startSimulation(approvedLevels, spawn);
     setScreen("sim");

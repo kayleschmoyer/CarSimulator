@@ -103,7 +103,7 @@ def generate_mock_layout(level_id: str, floor_elevation: float, display_name: st
     ]
 
     # ── Entry / exit points ───────────────────────────────────────────────────
-    entry_points = [{"id": "ep_main", "position": {"x": 8, "y": 2}, "direction": 3.14159}]
+    entry_points = [{"id": "ep_main", "position": {"x": 50, "y": 15}, "direction": 3.14159}]
     exit_points  = [{"id": "xp_main", "position": {"x": W-8, "y": 2}, "direction": 0.0}]
 
     # ── Nav graph (simple grid of waypoints) ──────────────────────────────────

@@ -37,10 +37,10 @@ export default function GarageScene() {
   return (
     <KeyboardControls map={KEYBOARD_MAP}>
       <SceneBackground />
-      {/* Bright ambient so every surface is clearly visible */}
-      <ambientLight intensity={3.5} color="#ffffff" />
-      {/* Hemisphere: warm ceiling / cool floor */}
-      <hemisphereLight args={["#fffbe8", "#d0cfc8", 2.0]} />
+      {/* Ambient — keep at 1.0 with flat/NoToneMapping so colors don't clip white */}
+      <ambientLight intensity={1.0} color="#e8eeff" />
+      {/* Gentle hemisphere for ceiling-to-floor gradient */}
+      <hemisphereLight args={["#ffffff", "#aaaaaa", 0.4]} />
 
       {/* Each floor level */}
       {levels.map((level) => {
