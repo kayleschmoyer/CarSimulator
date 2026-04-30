@@ -75,9 +75,9 @@ export default function CarController({ levels, wallMeshes }: Props) {
     // Smooth rotation lerp
     carRot.current += (targetRot.current - carRot.current) * Math.min(dt * 12, 1);
 
-    // Compute intended movement
-    const moveX = Math.sin(carRot.current) * speed.current * dt;
-    const moveZ = Math.cos(carRot.current) * speed.current * dt;
+    // Compute intended movement — negate so forward matches camera's -Z facing direction
+    const moveX = -Math.sin(carRot.current) * speed.current * dt;
+    const moveZ = -Math.cos(carRot.current) * speed.current * dt;
 
     const nextPos = carPos.current.clone();
     nextPos.x += moveX;
