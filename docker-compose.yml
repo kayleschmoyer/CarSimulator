@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: garage
+      POSTGRES_PASSWORD: garage
+      POSTGRES_DB: garage
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://garage:garage@postgres:5432/garage
+      - REDIS_URL=redis://redis:6379/0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - UPLOAD_DIR=/uploads
+    volumes:
+      - ./backend:/app
+      - uploads:/uploads
+    depends_on:
+      - postgres
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://garage:garage@postgres:5432/garage
+      - REDIS_URL=redis://redis:6379/0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - UPLOAD_DIR=/uploads
+    volumes:
+      - ./backend:/app
+      - uploads:/uploads
+    depends_on:
+      - postgres
+      - redis
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
+  uploads:
