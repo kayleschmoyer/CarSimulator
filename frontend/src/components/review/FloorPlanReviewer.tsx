@@ -26,6 +26,8 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
   const { updateLevelFeatures, markLevelApproved } = useProjectStore();
   const [cameras, setCameras] = useState<CameraFeature[]>(level.features.cameras);
   const [signs, setSigns] = useState<SignFeature[]>(level.features.signs);
+
+  const isDemoMode = cameras.some((c) => c.source === "mock") || signs.some((s) => (s as any).source === "mock");
   const [placement, setPlacement] = useState<PlacementMode>("none");
   const [saving, setSaving] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -78,6 +80,23 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
 
   return (
     <div className="flex flex-col h-full gap-5">
+
+      {/* Demo mode banner */}
+      {isDemoMode && (
+        <div className="rounded-xl px-4 py-3 flex items-start gap-3"
+          style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.35)" }}>
+          <span className="text-lg leading-none mt-0.5">⚠</span>
+          <div>
+            <div className="text-sm font-semibold" style={{ color: "#fbbf24" }}>Demo Mode — Simulated Detections</div>
+            <div className="text-xs mt-0.5" style={{ color: "#92400e", color: "#d97706" }}>
+              No API key is set, so these cameras and signs are <strong>pre-built demo data</strong> — they do not reflect your uploaded drawing.
+              Add <code className="px-1 rounded text-xs" style={{ background: "rgba(0,0,0,0.3)" }}>ANTHROPIC_API_KEY</code> to <code className="px-1 rounded text-xs" style={{ background: "rgba(0,0,0,0.3)" }}>backend/.env</code> for real AI detection.
+              You can still drive the demo simulation below.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <div>
@@ -176,7 +195,7 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
       {/* Feature lists */}
       <div className="grid grid-cols-2 gap-4 max-h-36 overflow-y-auto">
         {[
-          { label: "Cameras", items: cameras, remove: (id: string) => setCameras(p => p.filter(c => c.id !== id)), getLabel: (c: CameraFeature) => c.source === "manual" ? "Manual" : "Auto", getConf: (c: CameraFeature) => c.confidence },
+          { label: "Cameras", items: cameras, remove: (id: string) => setCameras(p => p.filter(c => c.id !== id)), getLabel: (c: CameraFeature) => c.source === "manual" ? "Manual" : c.source === "mock" ? "Demo" : "Auto", getConf: (c: CameraFeature) => c.confidence },
           { label: "Signs", items: signs, remove: (id: string) => setSigns(p => p.filter(s => s.id !== id)), getLabel: (s: SignFeature) => s.text || s.type, getConf: (s: SignFeature) => s.confidence },
         ].map(({ label, items, remove, getLabel, getConf }) => (
           <div key={label}>
