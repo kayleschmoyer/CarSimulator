@@ -1,7 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useProjectStore } from "../../store/projectStore";
-import { createParseProgressSocket } from "../../lib/api/client";
 
 interface Props {
   projectId: string;
@@ -11,13 +10,14 @@ interface Props {
 const ACCEPTED_TYPES = { "image/*": [".png", ".bmp", ".jpg", ".jpeg"], "application/pdf": [".pdf"] };
 
 export default function FloorPlanUploader({ projectId, onUploaded }: Props) {
-  const { uploadLevel } = useProjectStore();
+  const { uploadLevel, refreshLevel } = useProjectStore();
   const [displayName, setDisplayName] = useState("");
   const [elevation, setElevation] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ stage: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) setFile(accepted[0]);
@@ -39,38 +39,26 @@ export default function FloorPlanUploader({ projectId, onUploaded }: Props) {
     try {
       const level = await uploadLevel(projectId, displayName, elevation, file);
 
-      // Subscribe to parse progress via WebSocket
-      const ws = createParseProgressSocket(level.id, (data) => {
-        setProgress(data);
-        if (data.stage === "complete") {
-          ws.close();
-          setUploading(false);
-          onUploaded();
-        } else if (data.stage === "failed") {
-          ws.close();
-          setUploading(false);
-          setError(data.message);
-        }
-      });
+      setProgress({ stage: "processing", message: "Analyzing floor plan — this may take 1–2 minutes…" });
 
-      // Fallback: poll if WebSocket unavailable
-      setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          setProgress({ stage: "processing", message: "Processing (parsing may take 1-2 minutes)..." });
-          const poll = setInterval(async () => {
-            try {
-              const { refreshLevel } = useProjectStore.getState();
-              await refreshLevel(projectId, level.id);
-              const updated = useProjectStore.getState().activeProject?.levels.find((l) => l.id === level.id);
-              if (updated?.parse_status === "needs_review" || updated?.parse_status === "complete") {
-                clearInterval(poll);
-                setUploading(false);
-                onUploaded();
-              }
-            } catch {}
-          }, 3000);
-        }
-      }, 1000);
+      // Poll every 2.5s until parse completes
+      pollRef.current = setInterval(async () => {
+        try {
+          await refreshLevel(projectId, level.id);
+          const updated = useProjectStore.getState().activeProject?.levels.find((l) => l.id === level.id);
+          if (!updated) return;
+
+          if (updated.parse_status === "needs_review" || updated.parse_status === "complete") {
+            clearInterval(pollRef.current!);
+            setUploading(false);
+            onUploaded();
+          } else if (updated.parse_status === "failed") {
+            clearInterval(pollRef.current!);
+            setUploading(false);
+            setError("Parse failed — check that your API key is set, or try again.");
+          }
+        } catch {}
+      }, 2500);
     } catch (e) {
       setError(String(e));
       setUploading(false);

@@ -21,14 +21,3 @@ export const api = {
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
 
-export function createParseProgressSocket(levelId: string, onMessage: (data: { stage: string; message: string }) => void): WebSocket {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const host = window.location.host;
-  const ws = new WebSocket(`${protocol}//${host}/ws/parse/${levelId}`);
-  ws.onmessage = (e) => {
-    try {
-      onMessage(JSON.parse(e.data));
-    } catch {}
-  };
-  return ws;
-}

@@ -1,8 +1,8 @@
 """
 Orchestrates the full parse pipeline for a single floor plan image.
-Called by the Celery task.
+If ANTHROPIC_API_KEY is not set, falls back to mock layout so the
+simulation can be tested without any API credentials.
 """
-import json
 import os
 import uuid
 from datetime import datetime
@@ -15,6 +15,7 @@ from app.services.parse_pipeline.claude_features import extract_features
 from app.services.parse_pipeline.ocr import extract_text_labels
 from app.services.parse_pipeline.coordinate_norm import build_normalized_geometry
 from app.services.parse_pipeline.graph_builder import build_nav_graph
+from app.services.parse_pipeline.mock_layout import generate_mock_layout
 
 
 def run_parse_pipeline(
@@ -23,14 +24,25 @@ def run_parse_pipeline(
     floor_elevation: float,
     upload_dir: str,
     progress_callback=None,
+    display_name: str = "",
 ) -> dict:
     """
     Full pipeline: raw file → parsed GarageLevel data dict.
+    Falls back to mock layout when ANTHROPIC_API_KEY is not configured.
     progress_callback(stage: str, message: str) called at each stage.
     """
     def report(stage: str, msg: str):
         if progress_callback:
             progress_callback(stage, msg)
+
+    # ── Mock mode: no API key configured ──────────────────────────────────────
+    if not settings.anthropic_api_key or settings.anthropic_api_key == "your-api-key-here":
+        report("mock", "No API key set — using demo layout (add ANTHROPIC_API_KEY to .env for real parsing)")
+        import time; time.sleep(2)  # simulate processing delay so UI shows "Processing"
+        result = generate_mock_layout(level_id, floor_elevation, display_name or f"Level {level_id[:4]}")
+        result["level_id"] = level_id
+        return result
+    # ── End mock mode ─────────────────────────────────────────────────────────
 
     processed_dir = os.path.join(upload_dir, "processed")
     os.makedirs(processed_dir, exist_ok=True)

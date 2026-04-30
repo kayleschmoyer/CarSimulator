@@ -1,17 +1,54 @@
-import json
+import asyncio
 import os
 import uuid
-from datetime import datetime
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 import aiofiles
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 
 from app.config import settings
-from app.models.schema.garage import GarageLevel, AddLevelRequest, UpdateFeatureRequest
+from app.models.schema.garage import GarageLevel, UpdateFeatureRequest
 from app.api.routes.projects import get_project_store
-from app.tasks.parse_tasks import parse_floor_plan
+from app.services.parse_pipeline.orchestrator import run_parse_pipeline
 
 router = APIRouter(prefix="/projects/{project_id}/levels", tags=["levels"])
+
+
+def _apply_parse_result(level: dict, result: dict) -> None:
+    level["processed_image_url"] = result.get("processed_image_url", "")
+    level["scale_meters_per_pixel"] = result.get("scale_meters_per_pixel", 0.033)
+    level["origin_pixel"] = result.get("origin_pixel", {"x": 0, "y": 0})
+    level["geometry"] = result.get("geometry", level["geometry"])
+    level["features"] = result.get("features", level["features"])
+    level["nav_graph"] = result.get("nav_graph", level["nav_graph"])
+    level["parse_status"] = "needs_review"
+
+
+async def _run_parse_background(file_path: str, level_id: str, floor_elevation: float,
+                                 upload_dir: str, project_id: str, display_name: str = "") -> None:
+    store = get_project_store()
+    level = next(
+        (l for l in store.get(project_id, {}).get("levels", []) if l["id"] == level_id),
+        None,
+    )
+    if level is None:
+        return
+
+    try:
+        # Run blocking pipeline in a thread so we don't block the event loop
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: run_parse_pipeline(
+                source_file_path=file_path,
+                level_id=level_id,
+                floor_elevation=floor_elevation,
+                upload_dir=upload_dir,
+                display_name=display_name,
+            ),
+        )
+        _apply_parse_result(level, result)
+    except Exception as exc:
+        level["parse_status"] = "failed"
+        level["parse_error"] = str(exc)
 
 
 @router.get("", response_model=list[GarageLevel])
@@ -25,6 +62,7 @@ def list_levels(project_id: str):
 @router.post("", response_model=GarageLevel)
 async def upload_level(
     project_id: str,
+    background_tasks: BackgroundTasks,
     display_name: str = Form(...),
     floor_elevation: float = Form(...),
     file: UploadFile = File(...),
@@ -35,7 +73,6 @@ async def upload_level(
 
     level_id = str(uuid.uuid4())
 
-    # Save uploaded file
     upload_dir = os.path.join(settings.upload_dir, project_id)
     os.makedirs(upload_dir, exist_ok=True)
     ext = os.path.splitext(file.filename or "")[1].lower() or ".png"
@@ -45,14 +82,13 @@ async def upload_level(
         content = await file.read()
         await f.write(content)
 
-    # Create level record
     level = {
         "id": level_id,
         "display_name": display_name,
         "floor_elevation": floor_elevation,
         "source_image_url": file_path,
         "processed_image_url": "",
-        "parse_status": "pending",
+        "parse_status": "processing",
         "scale_meters_per_pixel": 0.033,
         "origin_pixel": {"x": 0, "y": 0},
         "geometry": {"walls": [], "lanes": [], "ramp_regions": [], "columns": [], "perimeter_openings": []},
@@ -62,16 +98,12 @@ async def upload_level(
     store[project_id]["levels"].append(level)
     store[project_id]["metadata"]["total_levels"] = len(store[project_id]["levels"])
 
-    # Kick off async parse
-    parse_floor_plan.delay(
-        source_file_path=file_path,
-        level_id=level_id,
-        floor_elevation=floor_elevation,
-        upload_dir=upload_dir,
+    # Run parse pipeline in background — no Celery, no Redis, works on Windows
+    background_tasks.add_task(
+        _run_parse_background,
+        file_path, level_id, floor_elevation, upload_dir, project_id, display_name,
     )
 
-    # Mark as processing
-    level["parse_status"] = "processing"
     return level
 
 
@@ -88,7 +120,6 @@ def get_level(project_id: str, level_id: str):
 
 @router.patch("/{level_id}/features")
 def update_features(project_id: str, level_id: str, req: UpdateFeatureRequest):
-    """Allow manual correction of detected features (cameras, signs, entry/exit points)."""
     store = get_project_store()
     if project_id not in store:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -106,27 +137,3 @@ def update_features(project_id: str, level_id: str, req: UpdateFeatureRequest):
         level["features"]["exit_points"] = [e.model_dump() for e in req.exit_points]
 
     return level
-
-
-@router.post("/{level_id}/parse-result")
-def receive_parse_result(project_id: str, level_id: str, result: dict):
-    """
-    Internal endpoint called by Celery worker to store parse results.
-    In production this would be called directly from the task via DB write.
-    """
-    store = get_project_store()
-    if project_id not in store:
-        raise HTTPException(status_code=404, detail="Project not found")
-    level = next((l for l in store[project_id]["levels"] if l["id"] == level_id), None)
-    if not level:
-        raise HTTPException(status_code=404, detail="Level not found")
-
-    level["processed_image_url"] = result.get("processed_image_url", "")
-    level["scale_meters_per_pixel"] = result.get("scale_meters_per_pixel", 0.033)
-    level["origin_pixel"] = result.get("origin_pixel", {"x": 0, "y": 0})
-    level["geometry"] = result.get("geometry", level["geometry"])
-    level["features"] = result.get("features", level["features"])
-    level["nav_graph"] = result.get("nav_graph", level["nav_graph"])
-    level["parse_status"] = "needs_review"
-
-    return {"status": "updated"}
