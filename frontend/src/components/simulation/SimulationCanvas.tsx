@@ -29,6 +29,9 @@ export default function SimulationCanvas({ onExit }: Props) {
         shadows={false}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         style={{ width: "100%", height: "100%" }}
+        onCreated={({ gl }) => {
+          gl.toneMapping = 0; // NoToneMapping — keep colors as authored
+        }}
       >
         <GarageScene />
       </Canvas>

@@ -7,9 +7,9 @@ import { buildLaneGeometry } from "../../lib/geometry/laneGeometry";
 import { pointInPolygon } from "../../lib/geometry/pointInPolygon";
 import type { GarageLevel, CameraFeature, SignFeature } from "../../types/garage";
 
-const CONCRETE_COLOR = "#8a8a8a";
-const WALL_COLOR = "#6b6b6b";
-const CEILING_COLOR = "#777777";
+const CONCRETE_COLOR = "#b0b0b0";
+const WALL_COLOR = "#999999";
+const CEILING_COLOR = "#c8c8c8";
 const FLOOR_HEIGHT = 2.7; // m floor-to-ceiling
 
 const CAMERA_TRIGGER_RADIUS = 4.0; // m
@@ -95,14 +95,15 @@ export default function FloorLevel({ level, visible, wallMeshRef }: Props) {
         <SignMarker key={sign.id} sign={sign} levelElevation={level.floor_elevation} />
       ))}
 
-      {/* Overhead garage lights */}
+      {/* Overhead fluorescent lights — bright, tight grid */}
       {generateLightPositions(level.floor_elevation).map((pos, i) => (
         <pointLight
           key={i}
           position={pos}
-          intensity={8}
-          distance={25}
-          color="#fff8e7"
+          intensity={60}
+          distance={18}
+          decay={1}
+          color="#fffef0"
           castShadow={false}
         />
       ))}
@@ -222,12 +223,12 @@ function SignMarker({ sign, levelElevation }: { sign: SignFeature; levelElevatio
 
 function generateLightPositions(elevation: number): [number, number, number][] {
   const lights: [number, number, number][] = [];
-  const spacing = 20;
-  const rows = 5;
-  const cols = 8;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      lights.push([c * spacing - (cols * spacing) / 2, elevation + 2.4, r * spacing - (rows * spacing) / 2]);
+  // Cover 0–120m × 0–70m with 12m spacing to match typical garage layout
+  const spacingX = 12;
+  const spacingZ = 12;
+  for (let x = 6; x < 120; x += spacingX) {
+    for (let z = 6; z < 70; z += spacingZ) {
+      lights.push([x, elevation + 2.5, z]);
     }
   }
   return lights;

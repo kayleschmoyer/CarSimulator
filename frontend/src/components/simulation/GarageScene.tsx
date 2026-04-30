@@ -1,6 +1,7 @@
 import { useRef, useCallback } from "react";
 import * as THREE from "three";
 import { KeyboardControls } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
 import { useSimulationStore } from "../../store/simulationStore";
 import FloorLevel from "./FloorLevel";
 import CarController, { Controls } from "./CarController";
@@ -11,6 +12,12 @@ const KEYBOARD_MAP = [
   { name: Controls.left, keys: ["ArrowLeft", "KeyA"] },
   { name: Controls.right, keys: ["ArrowRight", "KeyD"] },
 ];
+
+function SceneBackground() {
+  const { scene } = useThree();
+  scene.background = new THREE.Color("#1a1a2e"); // dark blue-gray — visible through openings
+  return null;
+}
 
 export default function GarageScene() {
   const { levels, currentLevelId, carPosition } = useSimulationStore();
@@ -29,8 +36,11 @@ export default function GarageScene() {
 
   return (
     <KeyboardControls map={KEYBOARD_MAP}>
-      {/* Ambient fill light */}
-      <ambientLight intensity={0.4} color="#e8e8f0" />
+      <SceneBackground />
+      {/* Bright ambient so every surface is clearly visible */}
+      <ambientLight intensity={3.5} color="#ffffff" />
+      {/* Hemisphere: warm ceiling / cool floor */}
+      <hemisphereLight args={["#fffbe8", "#d0cfc8", 2.0]} />
 
       {/* Each floor level */}
       {levels.map((level) => {
