@@ -10,6 +10,18 @@ interface Props {
 
 type PlacementMode = "none" | "camera" | "sign";
 
+function resolveImageUrl(rawUrl: string): string | null {
+  if (!rawUrl) return null;
+  // Normalize Windows backslashes and find the /uploads/ segment
+  const normalized = rawUrl.replace(/\\/g, "/");
+  const idx = normalized.indexOf("/uploads/");
+  if (idx !== -1) return normalized.substring(idx);
+  // Fallback: if the path literally starts at uploads dir, prepend
+  const uploadsIdx = normalized.indexOf("uploads/");
+  if (uploadsIdx !== -1) return "/" + normalized.substring(uploadsIdx);
+  return null;
+}
+
 export default function FloorPlanReviewer({ projectId, level, onApprove }: Props) {
   const { updateLevelFeatures, markLevelApproved } = useProjectStore();
   const [cameras, setCameras] = useState<CameraFeature[]>(level.features.cameras);
@@ -18,55 +30,35 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
   const [saving, setSaving] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  const imageUrl = level.processed_image_url
-    ? `/uploads/${level.processed_image_url.split("/uploads/").pop()}`
-    : level.source_image_url
-    ? `/uploads/${level.source_image_url.split("/uploads/").pop()}`
-    : null;
+  const imageUrl = resolveImageUrl(level.processed_image_url) ??
+                   resolveImageUrl(level.source_image_url);
 
   const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (placement === "none" || !imgRef.current) return;
-
     const rect = imgRef.current.getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
     const relY = (e.clientY - rect.top) / rect.height;
-
-    // Convert relative position to meter coords using scale
-    const imgW = imgRef.current.naturalWidth;
-    const imgH = imgRef.current.naturalHeight;
-    const pxX = relX * imgW;
-    const pxY = relY * imgH;
+    const pxX = relX * imgRef.current.naturalWidth;
+    const pxY = relY * imgRef.current.naturalHeight;
     const mX = (pxX - level.origin_pixel.x) * level.scale_meters_per_pixel;
     const mY = (pxY - level.origin_pixel.y) * level.scale_meters_per_pixel;
 
     if (placement === "camera") {
-      const newCam: CameraFeature = {
+      setCameras((prev) => [...prev, {
         id: `cam_manual_${Date.now()}`,
         position: { x: mX, y: mY },
-        elevation: 2.2,
-        coverage_angle: 90,
-        facing_direction: 0,
-        source: "manual",
-        confidence: 1.0,
-        notes: "Manually placed",
-      };
-      setCameras((prev) => [...prev, newCam]);
-    } else if (placement === "sign") {
-      const newSign: SignFeature = {
+        elevation: 2.2, coverage_angle: 90, facing_direction: 0,
+        source: "manual", confidence: 1.0, notes: "Manually placed",
+      }]);
+    } else {
+      setSigns((prev) => [...prev, {
         id: `sign_manual_${Date.now()}`,
         position: { x: mX, y: mY },
-        elevation: 2.0,
-        type: "unknown",
-        text: "",
-        source: "manual",
-        confidence: 1.0,
-      };
-      setSigns((prev) => [...prev, newSign]);
+        elevation: 2.0, type: "unknown", text: "",
+        source: "manual", confidence: 1.0,
+      }]);
     }
   };
-
-  const removeCamera = (id: string) => setCameras((prev) => prev.filter((c) => c.id !== id));
-  const removeSign = (id: string) => setSigns((prev) => prev.filter((s) => s.id !== id));
 
   const handleApprove = async () => {
     setSaving(true);
@@ -79,35 +71,55 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
     }
   };
 
-  const confidenceBadge = (conf: number) =>
-    conf > 0.85 ? "bg-green-800 text-green-200" : conf > 0.6 ? "bg-yellow-800 text-yellow-200" : "bg-red-800 text-red-200";
+  const confColor = (c: number) =>
+    c > 0.85 ? { bg: "rgba(16,185,129,0.15)", text: "#6ee7b7" }
+    : c > 0.6 ? { bg: "rgba(251,191,36,0.15)", text: "#fde68a" }
+    : { bg: "rgba(239,68,68,0.15)", text: "#fca5a5" };
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-5">
+      {/* Toolbar */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{level.display_name} — Review Detections</h2>
-          <p className="text-xs text-gray-400">Verify detected cameras and signs, add missing ones, then approve.</p>
+          <h2 className="text-lg font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            {level.display_name} — Review Detections
+          </h2>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+            Verify detected cameras and signs, add missing ones, then approve.
+          </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setPlacement((p) => (p === "camera" ? "none" : "camera"))}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${placement === "camera" ? "bg-green-600 border-green-500 text-white" : "bg-gray-800 border-gray-600 text-gray-300 hover:border-green-500"}`}
-          >
-            + Camera
-          </button>
-          <button
-            onClick={() => setPlacement((p) => (p === "sign" ? "none" : "sign"))}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${placement === "sign" ? "bg-blue-600 border-blue-500 text-white" : "bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500"}`}
-          >
-            + Sign
-          </button>
+          {(["camera", "sign"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setPlacement((p) => (p === mode ? "none" : mode))}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+              style={{
+                background: placement === mode
+                  ? (mode === "camera" ? "rgba(16,185,129,0.2)" : "rgba(59,130,246,0.2)")
+                  : "var(--bg-elevated)",
+                border: `1px solid ${placement === mode
+                  ? (mode === "camera" ? "#10b981" : "var(--accent)")
+                  : "var(--border)"}`,
+                color: placement === mode
+                  ? (mode === "camera" ? "#10b981" : "#93c5fd")
+                  : "var(--text-secondary)",
+              }}
+            >
+              + {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Floor plan image with SVG overlay */}
       <div
-        className={`relative flex-1 min-h-0 overflow-hidden rounded-xl border ${placement !== "none" ? "border-yellow-500 cursor-crosshair" : "border-gray-700"}`}
+        className="relative flex-1 min-h-0 overflow-hidden rounded-2xl"
+        style={{
+          border: `1px solid ${placement !== "none" ? "#f59e0b" : "var(--border)"}`,
+          background: "var(--bg-elevated)",
+          cursor: placement !== "none" ? "crosshair" : "default",
+        }}
         onClick={handleImageClick}
       >
         {imageUrl ? (
@@ -119,90 +131,90 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
               className="w-full h-full object-contain"
               style={{ display: "block" }}
             />
-            {/* SVG overlay for detected features */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ mixBlendMode: "normal" }}>
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
               {cameras.map((cam) => {
-                const relX = ((cam.position.x / level.scale_meters_per_pixel + level.origin_pixel.x) / (imgRef.current?.naturalWidth || 1)) * 100;
-                const relY = ((cam.position.y / level.scale_meters_per_pixel + level.origin_pixel.y) / (imgRef.current?.naturalHeight || 1)) * 100;
-                const color = cam.source === "manual" ? "#00ff88" : cam.confidence > 0.85 ? "#00cc66" : cam.confidence > 0.6 ? "#ffaa00" : "#ff4444";
+                const rw = imgRef.current?.naturalWidth || 1;
+                const rh = imgRef.current?.naturalHeight || 1;
+                const rx = ((cam.position.x / level.scale_meters_per_pixel + level.origin_pixel.x) / rw) * 100;
+                const ry = ((cam.position.y / level.scale_meters_per_pixel + level.origin_pixel.y) / rh) * 100;
+                const col = cam.source === "manual" ? "#10b981" : cam.confidence > 0.85 ? "#10b981" : cam.confidence > 0.6 ? "#f59e0b" : "#ef4444";
                 return (
-                  <g key={cam.id} transform={`translate(${relX}%, ${relY}%)`}>
-                    <circle r="8" fill={color} fillOpacity="0.3" stroke={color} strokeWidth="2" />
-                    <line x1="0" y1="-12" x2="0" y2="-5" stroke={color} strokeWidth="2" />
-                    <text y="-14" fontSize="6" fill={color} textAnchor="middle">CAM</text>
+                  <g key={cam.id} transform={`translate(${rx}%, ${ry}%)`}>
+                    <circle r="7" fill={col} fillOpacity="0.25" stroke={col} strokeWidth="1.5" />
+                    <line x1="0" y1="-10" x2="0" y2="-4" stroke={col} strokeWidth="1.5" />
+                    <text y="-13" fontSize="5.5" fill={col} textAnchor="middle" fontFamily="Inter,sans-serif">CAM</text>
                   </g>
                 );
               })}
               {signs.map((sign) => {
-                const relX = ((sign.position.x / level.scale_meters_per_pixel + level.origin_pixel.x) / (imgRef.current?.naturalWidth || 1)) * 100;
-                const relY = ((sign.position.y / level.scale_meters_per_pixel + level.origin_pixel.y) / (imgRef.current?.naturalHeight || 1)) * 100;
+                const rw = imgRef.current?.naturalWidth || 1;
+                const rh = imgRef.current?.naturalHeight || 1;
+                const rx = ((sign.position.x / level.scale_meters_per_pixel + level.origin_pixel.x) / rw) * 100;
+                const ry = ((sign.position.y / level.scale_meters_per_pixel + level.origin_pixel.y) / rh) * 100;
                 return (
-                  <g key={sign.id} transform={`translate(${relX}%, ${relY}%)`}>
-                    <rect x="-8" y="-5" width="16" height="10" fill="#0055cc" fillOpacity="0.4" stroke="#4488ff" strokeWidth="1.5" rx="2" />
-                    <text fontSize="5" fill="#aaccff" textAnchor="middle" dy="2">SGN</text>
+                  <g key={sign.id} transform={`translate(${rx}%, ${ry}%)`}>
+                    <rect x="-9" y="-6" width="18" height="12" fill="rgba(59,130,246,0.3)" stroke="#3b82f6" strokeWidth="1.5" rx="2" />
+                    <text fontSize="5" fill="#93c5fd" textAnchor="middle" dy="2" fontFamily="Inter,sans-serif">SGN</text>
                   </g>
                 );
               })}
             </svg>
           </>
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+          <div className="flex items-center justify-center h-full text-sm" style={{ color: "var(--text-muted)" }}>
             No floor plan image available
           </div>
         )}
         {placement !== "none" && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-yellow-900/90 border border-yellow-600 rounded-full px-4 py-1 text-xs text-yellow-200 pointer-events-none">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs pointer-events-none font-medium"
+            style={{ background: "rgba(245,158,11,0.9)", color: "#000" }}>
             Click to place {placement}
           </div>
         )}
       </div>
 
       {/* Feature lists */}
-      <div className="grid grid-cols-2 gap-4 max-h-40 overflow-y-auto">
-        <div>
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-            Cameras ({cameras.length})
-          </h3>
-          <div className="space-y-1">
-            {cameras.map((cam) => (
-              <div key={cam.id} className="flex items-center justify-between bg-gray-800/50 rounded px-2 py-1">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-1.5 rounded ${confidenceBadge(cam.confidence)}`}>
-                    {Math.round(cam.confidence * 100)}%
-                  </span>
-                  <span className="text-xs text-gray-300">{cam.source === "manual" ? "Manual" : "Auto"}</span>
-                </div>
-                <button onClick={() => removeCamera(cam.id)} className="text-gray-500 hover:text-red-400 text-xs">✕</button>
-              </div>
-            ))}
+      <div className="grid grid-cols-2 gap-4 max-h-36 overflow-y-auto">
+        {[
+          { label: "Cameras", items: cameras, remove: (id: string) => setCameras(p => p.filter(c => c.id !== id)), getLabel: (c: CameraFeature) => c.source === "manual" ? "Manual" : "Auto", getConf: (c: CameraFeature) => c.confidence },
+          { label: "Signs", items: signs, remove: (id: string) => setSigns(p => p.filter(s => s.id !== id)), getLabel: (s: SignFeature) => s.text || s.type, getConf: (s: SignFeature) => s.confidence },
+        ].map(({ label, items, remove, getLabel, getConf }) => (
+          <div key={label}>
+            <div className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              {label} ({items.length})
+            </div>
+            <div className="space-y-1">
+              {items.map((item: any) => {
+                const cc = confColor(getConf(item));
+                return (
+                  <div key={item.id}
+                    className="flex items-center justify-between rounded-lg px-3 py-1.5"
+                    style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium px-1.5 py-0.5 rounded"
+                        style={{ background: cc.bg, color: cc.text }}>
+                        {Math.round(getConf(item) * 100)}%
+                      </span>
+                      <span className="text-xs" style={{ color: "var(--text-secondary)" }}>{getLabel(item)}</span>
+                    </div>
+                    <button onClick={() => remove(item.id)}
+                      className="text-xs transition-colors hover:opacity-80"
+                      style={{ color: "var(--text-muted)" }}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-        <div>
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-            Signs ({signs.length})
-          </h3>
-          <div className="space-y-1">
-            {signs.map((sign) => (
-              <div key={sign.id} className="flex items-center justify-between bg-gray-800/50 rounded px-2 py-1">
-                <div className="flex items-center gap-2">
-                  <span className={`text-xs px-1.5 rounded ${confidenceBadge(sign.confidence)}`}>
-                    {Math.round(sign.confidence * 100)}%
-                  </span>
-                  <span className="text-xs text-gray-300">{sign.text || sign.type}</span>
-                </div>
-                <button onClick={() => removeSign(sign.id)} className="text-gray-500 hover:text-red-400 text-xs">✕</button>
-              </div>
-            ))}
-          </div>
-        </div>
+        ))}
       </div>
 
       <button
         onClick={handleApprove}
         disabled={saving}
-        className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-700 text-white font-semibold rounded-xl py-3 transition-colors"
+        className="w-full rounded-xl py-3 text-sm font-semibold transition-all disabled:opacity-50 text-white"
+        style={{ background: "linear-gradient(135deg, #3b82f6, #06b6d4)" }}
       >
-        {saving ? "Saving..." : "Approve & Launch Simulation →"}
+        {saving ? "Saving…" : "Approve & Launch Simulation →"}
       </button>
     </div>
   );

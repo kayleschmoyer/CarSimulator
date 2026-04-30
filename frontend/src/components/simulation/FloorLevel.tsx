@@ -7,9 +7,9 @@ import { buildLaneGeometry } from "../../lib/geometry/laneGeometry";
 import { pointInPolygon } from "../../lib/geometry/pointInPolygon";
 import type { GarageLevel, CameraFeature, SignFeature } from "../../types/garage";
 
-const CONCRETE_COLOR = "#b0b0b0";
-const WALL_COLOR = "#999999";
-const CEILING_COLOR = "#c8c8c8";
+const CONCRETE_COLOR = "#c8c8c8";
+const WALL_COLOR = "#b8b8b8";
+const CEILING_COLOR = "#d8d8d8";
 const FLOOR_HEIGHT = 2.7; // m floor-to-ceiling
 
 const CAMERA_TRIGGER_RADIUS = 4.0; // m
@@ -36,35 +36,28 @@ export default function FloorLevel({ level, visible, wallMeshRef }: Props) {
   return (
     <group visible={visible}>
       {/* Floor slab */}
-      <mesh
-        position={[0, level.floor_elevation, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-      >
+      <mesh position={[0, level.floor_elevation, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[500, 500]} />
-        <meshStandardMaterial color={CONCRETE_COLOR} roughness={0.9} metalness={0.0} />
+        <meshStandardMaterial color={CONCRETE_COLOR} emissive="#505050" emissiveIntensity={0.55} roughness={0.9} />
       </mesh>
 
       {/* Ceiling */}
-      <mesh
-        position={[0, level.floor_elevation + FLOOR_HEIGHT, 0]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
+      <mesh position={[0, level.floor_elevation + FLOOR_HEIGHT, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[500, 500]} />
-        <meshStandardMaterial color={CEILING_COLOR} roughness={0.95} metalness={0.0} side={THREE.BackSide} />
+        <meshStandardMaterial color={CEILING_COLOR} emissive="#707070" emissiveIntensity={0.5} roughness={0.95} side={THREE.BackSide} />
       </mesh>
 
       {/* Lane surfaces */}
       {laneGeo.getAttribute("position") && (
-        <mesh geometry={laneGeo} receiveShadow>
-          <meshStandardMaterial color="#707070" roughness={0.85} metalness={0.0} />
+        <mesh geometry={laneGeo}>
+          <meshStandardMaterial color="#b0b0b0" emissive="#484848" emissiveIntensity={0.5} roughness={0.85} />
         </mesh>
       )}
 
       {/* Walls */}
       {wallGeo.getAttribute("position") && (
-        <mesh ref={wallMeshLocal} geometry={wallGeo} castShadow receiveShadow>
-          <meshStandardMaterial color={WALL_COLOR} roughness={0.8} metalness={0.0} />
+        <mesh ref={wallMeshLocal} geometry={wallGeo}>
+          <meshStandardMaterial color={WALL_COLOR} emissive="#3a3a3a" emissiveIntensity={0.4} roughness={0.8} />
         </mesh>
       )}
 
@@ -76,7 +69,7 @@ export default function FloorLevel({ level, visible, wallMeshRef }: Props) {
           castShadow
         >
           <boxGeometry args={[col.width, FLOOR_HEIGHT, col.depth]} />
-          <meshStandardMaterial color={WALL_COLOR} roughness={0.7} />
+          <meshStandardMaterial color={WALL_COLOR} emissive="#3a3a3a" emissiveIntensity={0.4} roughness={0.7} />
         </mesh>
       ))}
 
@@ -132,7 +125,7 @@ function RampMesh({ ramp }: { ramp: GarageLevel["geometry"]["ramp_regions"][0] }
 
   return (
     <mesh geometry={geo} receiveShadow>
-      <meshStandardMaterial color="#686868" roughness={0.9} side={THREE.DoubleSide} />
+      <meshStandardMaterial color="#b8b8b8" emissive="#484848" emissiveIntensity={0.5} roughness={0.9} side={THREE.DoubleSide} />
     </mesh>
   );
 }

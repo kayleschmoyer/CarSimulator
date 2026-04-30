@@ -1,18 +1,51 @@
 @import "tailwindcss";
 
-* {
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+:root {
+  --bg-base:      #070b12;
+  --bg-surface:   #0d1420;
+  --bg-elevated:  #131c2e;
+  --bg-card:      #111827;
+  --border:       rgba(255,255,255,0.07);
+  --border-hover: rgba(255,255,255,0.14);
+  --accent:       #3b82f6;
+  --accent-dim:   #1d4ed8;
+  --cyan:         #06b6d4;
+  --text-primary: #eef2ff;
+  --text-secondary: #7c8db0;
+  --text-muted:   #3d4f6e;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
 body {
-  background: #0a0a0f;
-  color: #e5e7eb;
-  font-family: system-ui, sans-serif;
-  overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'Inter', 'DM Sans', system-ui, sans-serif;
+  font-feature-settings: "cv02","cv03","cv04","cv11";
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 canvas {
   display: block;
 }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+/* Slide-in animation for HUD notifications */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in { animation: slideIn 0.2s ease-out; }
