@@ -4,17 +4,12 @@ import { useSimulationStore } from "../../store/simulationStore";
 import { useNotificationStore } from "../../store/notificationStore";
 import { buildWallGeometry } from "../../lib/geometry/wallGeometry";
 import { buildLaneGeometry } from "../../lib/geometry/laneGeometry";
-import { pointInPolygon } from "../../lib/geometry/pointInPolygon";
 import type { GarageLevel, CameraFeature, SignFeature } from "../../types/garage";
 
-const CONCRETE_COLOR = "#a8a8a8";
-const WALL_COLOR = "#8c8c8c";
-const CEILING_COLOR = "#bbbbbb";
-const FLOOR_HEIGHT = 2.7; // m floor-to-ceiling
-
-const CAMERA_TRIGGER_RADIUS = 4.0; // m
-const CAMERA_CLEAR_RADIUS = 7.0;
-const SIGN_TRIGGER_RADIUS = 6.0;
+const FLOOR_H = 3.0;           // floor-to-ceiling height (m)
+const CAMERA_TRIGGER = 4.0;
+const CAMERA_CLEAR   = 7.0;
+const SIGN_TRIGGER   = 6.0;
 
 interface Props {
   level: GarageLevel;
@@ -23,10 +18,10 @@ interface Props {
 }
 
 export default function FloorLevel({ level, visible, wallMeshRef }: Props) {
-  const wallGeo = useMemo(() => buildWallGeometry(level.geometry.walls), [level.id]);
-  const laneGeo = useMemo(() => buildLaneGeometry(level.geometry.lanes, level.floor_elevation), [level.id]);
-
+  const wallGeo  = useMemo(() => buildWallGeometry(level.geometry.walls), [level.id]);
+  const laneGeo  = useMemo(() => buildLaneGeometry(level.geometry.lanes, level.floor_elevation), [level.id]);
   const wallMeshLocal = useRef<THREE.Mesh>(null);
+  const el = level.floor_elevation;
 
   useEffect(() => {
     wallMeshRef(wallMeshLocal.current);
@@ -35,194 +30,287 @@ export default function FloorLevel({ level, visible, wallMeshRef }: Props) {
 
   return (
     <group visible={visible}>
-      {/* Floor slab */}
-      <mesh position={[0, level.floor_elevation, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+
+      {/* ── Floor — concrete tan ───────────────────────────────────────────── */}
+      <mesh position={[0, el, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[500, 500]} />
-        <meshStandardMaterial color={CONCRETE_COLOR} roughness={0.9} metalness={0} />
+        <meshStandardMaterial color="#b8b0a0" roughness={0.95} metalness={0} />
       </mesh>
 
-      {/* Ceiling */}
-      <mesh position={[0, level.floor_elevation + FLOOR_HEIGHT, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* ── Ceiling — dark charcoal so the space feels enclosed ───────────── */}
+      <mesh position={[0, el + FLOOR_H, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[500, 500]} />
-        <meshStandardMaterial color={CEILING_COLOR} roughness={0.95} metalness={0} side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#282830" roughness={0.9} metalness={0} side={THREE.DoubleSide} />
       </mesh>
 
-      {/* Lane surfaces */}
+      {/* ── Lane asphalt — slightly darker than floor ─────────────────────── */}
       {laneGeo.getAttribute("position") && (
-        <mesh geometry={laneGeo}>
-          <meshStandardMaterial color="#969696" roughness={0.85} metalness={0} />
+        <mesh geometry={laneGeo} receiveShadow>
+          <meshStandardMaterial color="#9a9590" roughness={0.9} metalness={0} />
         </mesh>
       )}
 
-      {/* Walls */}
+      {/* ── Concrete walls ───────────────────────────────────────────────── */}
       {wallGeo.getAttribute("position") && (
-        <mesh ref={wallMeshLocal} geometry={wallGeo}>
-          <meshStandardMaterial color={WALL_COLOR} roughness={0.8} metalness={0} />
+        <mesh ref={wallMeshLocal} geometry={wallGeo} castShadow receiveShadow>
+          <meshStandardMaterial color="#c0b8a8" roughness={0.85} metalness={0} />
         </mesh>
       )}
 
-      {/* Columns */}
+      {/* ── Columns ──────────────────────────────────────────────────────── */}
       {level.geometry.columns.map((col) => (
-        <mesh
-          key={col.id}
-          position={[col.position.x, level.floor_elevation + FLOOR_HEIGHT / 2, col.position.y]}
-          castShadow
-        >
-          <boxGeometry args={[col.width, FLOOR_HEIGHT, col.depth]} />
-          <meshStandardMaterial color={WALL_COLOR} roughness={0.7} metalness={0} />
+        <mesh key={col.id}
+          position={[col.position.x, el + FLOOR_H / 2, col.position.y]}
+          castShadow receiveShadow>
+          <boxGeometry args={[col.width + 0.3, FLOOR_H, col.depth + 0.3]} />
+          <meshStandardMaterial color="#b0aa9a" roughness={0.8} metalness={0} />
         </mesh>
       ))}
 
-      {/* Ramp surfaces */}
+      {/* ── Ramp surfaces ────────────────────────────────────────────────── */}
       {level.geometry.ramp_regions.map((ramp) => (
         <RampMesh key={ramp.id} ramp={ramp} />
       ))}
 
-      {/* Camera markers */}
+      {/* ── Fluorescent ceiling lights — visible fixture strips ───────────── */}
+      <CeilingLights elevation={el} floorH={FLOOR_H} />
+
+      {/* ── Point lights — actual illumination ───────────────────────────── */}
+      {generateLightPositions(el).map((pos, i) => (
+        <pointLight key={i} position={pos} intensity={2.5} distance={16} decay={1} color="#fff8e8" />
+      ))}
+
+      {/* ── Parking floor markings ───────────────────────────────────────── */}
+      <ParkingMarkings level={level} elevation={el} />
+
+      {/* ── Yellow safety stripes on perimeter ───────────────────────────── */}
+      <PerimeterStripes elevation={el} />
+
+      {/* ── Feature markers ──────────────────────────────────────────────── */}
       {level.features.cameras.map((cam) => (
-        <CameraMarker key={cam.id} camera={cam} levelElevation={level.floor_elevation} />
+        <CameraMarker key={cam.id} camera={cam} levelElevation={el} />
       ))}
-
-      {/* Sign markers */}
       {level.features.signs.map((sign) => (
-        <SignMarker key={sign.id} sign={sign} levelElevation={level.floor_elevation} />
-      ))}
-
-      {/* Overhead fluorescent lights — bright, tight grid */}
-      {generateLightPositions(level.floor_elevation).map((pos, i) => (
-        <pointLight
-          key={i}
-          position={pos}
-          intensity={1.5}
-          distance={14}
-          decay={1}
-          color="#fffef0"
-          castShadow={false}
-        />
+        <SignMarker key={sign.id} sign={sign} levelElevation={el} />
       ))}
     </group>
   );
 }
 
+// ── Fluorescent ceiling fixture strips ────────────────────────────────────────
+function CeilingLights({ elevation, floorH }: { elevation: number; floorH: number }) {
+  const fixtures = useMemo(() => {
+    const out: { x: number; z: number; rot: number }[] = [];
+    // Rows along garage length
+    for (let x = 10; x < 100; x += 12) {
+      for (let z = 6; z < 60; z += 10) {
+        out.push({ x, z, rot: 0 });
+      }
+    }
+    return out;
+  }, []);
+
+  return (
+    <>
+      {fixtures.map((f, i) => (
+        <group key={i} position={[f.x, elevation + floorH - 0.05, f.z]}>
+          {/* Fixture housing */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <boxGeometry args={[0.3, 1.8, 0.08]} />
+            <meshStandardMaterial color="#e8e8e8" roughness={0.3} />
+          </mesh>
+          {/* Glowing tube */}
+          <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, -0.03]}>
+            <boxGeometry args={[0.18, 1.6, 0.02]} />
+            <meshStandardMaterial color="#fffff0" emissive="#fffff0" emissiveIntensity={3} roughness={0} />
+          </mesh>
+        </group>
+      ))}
+    </>
+  );
+}
+
+// ── Parking stall lines + aisle markings ──────────────────────────────────────
+function ParkingMarkings({ level, elevation }: { level: GarageLevel; elevation: number }) {
+  const Y = elevation + 0.01; // just above floor
+
+  // Horizontal aisles from mock layout — stall lines perpendicular to aisle
+  const horizontalAisles = level.geometry.lanes
+    .filter((l) => l.id?.startsWith("lane_top") || l.id?.startsWith("lane_mid") || l.id?.startsWith("lane_bot"));
+
+  const lines: { x: number; z: number; w: number; d: number; rot?: number; color: string }[] = [];
+
+  // Generate stall lines along each horizontal aisle
+  horizontalAisles.forEach((lane) => {
+    const xs = lane.polygon.map((p) => p.x);
+    const zs = lane.polygon.map((p) => p.y);
+    const minX = Math.min(...xs); const maxX = Math.max(...xs);
+    const minZ = Math.min(...zs); const maxZ = Math.max(...zs);
+    const centerZ = (minZ + maxZ) / 2;
+
+    // Stall lines every 2.5m
+    for (let x = minX + 2.5; x < maxX - 1; x += 2.5) {
+      // Stalls above aisle
+      lines.push({ x, z: minZ - 2.5, w: 0.1, d: 5, color: "#ffffff" });
+      // Stalls below aisle
+      lines.push({ x, z: maxZ + 2.5, w: 0.1, d: 5, color: "#ffffff" });
+    }
+
+    // Yellow dashed centerline in aisle
+    for (let x = minX + 3; x < maxX - 3; x += 6) {
+      lines.push({ x: x + 1.5, z: centerZ, w: 3, d: 0.15, color: "#f5c518" });
+    }
+  });
+
+  return (
+    <>
+      {lines.map((l, i) => (
+        <mesh key={i} position={[l.x, Y, l.z]}>
+          <boxGeometry args={[l.w, 0.01, l.d]} />
+          <meshStandardMaterial color={l.color} roughness={0.5} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// ── Yellow safety stripes at edges / curbs ────────────────────────────────────
+function PerimeterStripes({ elevation }: { elevation: number }) {
+  const Y = elevation + 0.01;
+  // Black-yellow diagonal stripes along south wall
+  const stripes = useMemo(() => {
+    const out = [];
+    for (let x = 2; x < 98; x += 2) {
+      out.push(x);
+    }
+    return out;
+  }, []);
+
+  return (
+    <>
+      {stripes.map((x, i) => (
+        <mesh key={i} position={[x, Y, 58.5]}>
+          <boxGeometry args={[1, 0.01, 0.5]} />
+          <meshStandardMaterial color={i % 2 === 0 ? "#f5c518" : "#1a1a1a"} roughness={0.6} />
+        </mesh>
+      ))}
+      {stripes.map((x, i) => (
+        <mesh key={`n${i}`} position={[x, Y, 1.5]}>
+          <boxGeometry args={[1, 0.01, 0.5]} />
+          <meshStandardMaterial color={i % 2 === 0 ? "#f5c518" : "#1a1a1a"} roughness={0.6} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// ── Ramp ──────────────────────────────────────────────────────────────────────
 function RampMesh({ ramp }: { ramp: GarageLevel["geometry"]["ramp_regions"][0] }) {
   const geo = useMemo(() => {
     if (ramp.polygon.length < 3) return null;
-
-    // Build a flat polygon at start elevation, then tilt it
     const shape = new THREE.Shape();
     shape.moveTo(ramp.polygon[0].x, ramp.polygon[0].y);
-    for (let i = 1; i < ramp.polygon.length; i++) {
-      shape.lineTo(ramp.polygon[i].x, ramp.polygon[i].y);
-    }
+    for (let i = 1; i < ramp.polygon.length; i++) shape.lineTo(ramp.polygon[i].x, ramp.polygon[i].y);
     shape.closePath();
-
-    const geo = new THREE.ShapeGeometry(shape, 8);
-    geo.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
-    return geo;
+    const g = new THREE.ShapeGeometry(shape, 8);
+    g.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+    return g;
   }, [ramp.id]);
-
   if (!geo) return null;
-
   return (
-    <mesh geometry={geo} receiveShadow>
-      <meshStandardMaterial color="#989898" roughness={0.9} metalness={0} side={THREE.DoubleSide} />
+    <mesh geometry={geo}>
+      <meshStandardMaterial color="#a8a098" roughness={0.9} side={THREE.DoubleSide} />
     </mesh>
   );
 }
 
+// ── Camera marker ─────────────────────────────────────────────────────────────
 function CameraMarker({ camera, levelElevation }: { camera: CameraFeature; levelElevation: number }) {
   const carPos = useSimulationStore((s) => s.carPosition);
   const { addNotification, markTriggered, clearTriggered, isTriggered } = useNotificationStore();
 
-  const camWorldPos = new THREE.Vector3(
-    camera.position.x,
-    levelElevation + camera.elevation,
-    camera.position.y
-  );
+  const camVec = new THREE.Vector3(camera.position.x, levelElevation + camera.elevation, camera.position.y);
   const carVec = new THREE.Vector3(carPos[0], carPos[1], carPos[2]);
-  const dist = camWorldPos.distanceTo(carVec);
+  const dist = camVec.distanceTo(carVec);
 
-  if (dist < CAMERA_TRIGGER_RADIUS && !isTriggered(camera.id)) {
+  if (dist < CAMERA_TRIGGER && !isTriggered(camera.id)) {
     markTriggered(camera.id);
-    addNotification({
-      type: "camera",
-      title: "Security Camera",
-      body: camera.notes || `Camera detected — ${Math.round(dist)}m away`,
-    });
-  } else if (dist > CAMERA_CLEAR_RADIUS && isTriggered(camera.id)) {
+    addNotification({ type: "camera", title: "Security Camera", body: camera.notes || `Camera — ${Math.round(dist)}m` });
+  } else if (dist > CAMERA_CLEAR && isTriggered(camera.id)) {
     clearTriggered(camera.id);
   }
 
-  const confidenceColor = camera.confidence > 0.85 ? "#00ff88" : camera.confidence > 0.6 ? "#ffaa00" : "#ff4444";
-
   return (
     <group position={[camera.position.x, levelElevation + camera.elevation, camera.position.y]}>
-      {/* Camera body */}
       <mesh>
-        <boxGeometry args={[0.15, 0.1, 0.25]} />
-        <meshStandardMaterial color="#222222" roughness={0.3} metalness={0.6} />
+        <boxGeometry args={[0.2, 0.12, 0.3]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.3} metalness={0.7} />
       </mesh>
-      {/* Lens */}
-      <mesh position={[0, 0, 0.15]}>
-        <cylinderGeometry args={[0.04, 0.04, 0.08, 8]} />
-        <meshStandardMaterial color="#111111" roughness={0.1} metalness={0.8} />
+      <mesh position={[0, 0, 0.17]}>
+        <cylinderGeometry args={[0.05, 0.05, 0.1, 8]} rotation={[Math.PI / 2, 0, 0]} />
+        <meshStandardMaterial color="#111" roughness={0.1} metalness={0.9} />
       </mesh>
-      {/* Indicator light */}
-      <mesh position={[0.05, 0.06, 0]}>
-        <sphereGeometry args={[0.02]} />
-        <meshStandardMaterial color={confidenceColor} emissive={confidenceColor} emissiveIntensity={2} />
+      {/* Red LED */}
+      <mesh position={[0.08, 0.07, 0]}>
+        <sphereGeometry args={[0.025]} />
+        <meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={4} />
       </mesh>
     </group>
   );
 }
 
+// ── Sign marker ───────────────────────────────────────────────────────────────
 function SignMarker({ sign, levelElevation }: { sign: SignFeature; levelElevation: number }) {
   const carPos = useSimulationStore((s) => s.carPosition);
   const { addNotification, markTriggered, clearTriggered, isTriggered } = useNotificationStore();
 
-  const signWorldPos = new THREE.Vector3(sign.position.x, levelElevation + sign.elevation, sign.position.y);
-  const carVec = new THREE.Vector3(carPos[0], carPos[1], carPos[2]);
-  const dist = signWorldPos.distanceTo(carVec);
+  const signVec = new THREE.Vector3(sign.position.x, levelElevation + sign.elevation, sign.position.y);
+  const carVec  = new THREE.Vector3(carPos[0], carPos[1], carPos[2]);
+  const dist = signVec.distanceTo(carVec);
 
-  if (dist < SIGN_TRIGGER_RADIUS && !isTriggered(sign.id)) {
+  if (dist < SIGN_TRIGGER && !isTriggered(sign.id)) {
     markTriggered(sign.id);
-    addNotification({
-      type: "sign",
-      title: `Sign: ${sign.type.toUpperCase()}`,
-      body: sign.text || `${sign.type} sign detected`,
-    });
-  } else if (dist > SIGN_TRIGGER_RADIUS * 1.5 && isTriggered(sign.id)) {
+    addNotification({ type: "sign", title: `Sign: ${sign.type.toUpperCase()}`, body: sign.text || sign.type });
+  } else if (dist > SIGN_TRIGGER * 1.5 && isTriggered(sign.id)) {
     clearTriggered(sign.id);
   }
 
-  const signColors: Record<string, string> = {
-    exit: "#00cc44",
-    directional: "#0055cc",
-    speed_limit: "#ffffff",
+  const faceColor: Record<string, string> = {
+    exit:             "#00aa33",
+    directional:      "#003399",
+    speed_limit:      "#ffffff",
     height_clearance: "#ffcc00",
-    unknown: "#888888",
   };
-  const color = signColors[sign.type] ?? "#888888";
+  const face = faceColor[sign.type] ?? "#334466";
 
   return (
     <group position={[sign.position.x, levelElevation + sign.elevation, sign.position.y]}>
+      {/* Sign pole */}
+      <mesh position={[0, -0.8, 0]}>
+        <cylinderGeometry args={[0.03, 0.03, 1.2, 6]} />
+        <meshStandardMaterial color="#888" metalness={0.6} roughness={0.4} />
+      </mesh>
+      {/* Sign face */}
       <mesh>
-        <boxGeometry args={[0.6, 0.3, 0.04]} />
-        <meshStandardMaterial color={color} roughness={0.4} emissive={color} emissiveIntensity={0.3} />
+        <boxGeometry args={[0.7, 0.35, 0.05]} />
+        <meshStandardMaterial color={face} roughness={0.4} emissive={face} emissiveIntensity={0.4} />
+      </mesh>
+      {/* White border */}
+      <mesh position={[0, 0, 0.03]}>
+        <boxGeometry args={[0.74, 0.39, 0.01]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.5} />
       </mesh>
     </group>
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function generateLightPositions(elevation: number): [number, number, number][] {
-  const lights: [number, number, number][] = [];
-  // Cover 0–120m × 0–70m with 12m spacing to match typical garage layout
-  const spacingX = 12;
-  const spacingZ = 12;
-  for (let x = 6; x < 120; x += spacingX) {
-    for (let z = 6; z < 70; z += spacingZ) {
-      lights.push([x, elevation + 2.5, z]);
+  const out: [number, number, number][] = [];
+  for (let x = 10; x < 100; x += 12) {
+    for (let z = 6; z < 60; z += 10) {
+      out.push([x, elevation + FLOOR_H - 0.1, z]);
     }
   }
-  return lights;
+  return out;
 }

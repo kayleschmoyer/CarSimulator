@@ -15,7 +15,7 @@ const KEYBOARD_MAP = [
 
 function SceneBackground() {
   const { scene } = useThree();
-  scene.background = new THREE.Color("#1a1a2e"); // dark blue-gray — visible through openings
+  scene.background = new THREE.Color("#18181f"); // dark enclosed feel
   return null;
 }
 
@@ -37,10 +37,10 @@ export default function GarageScene() {
   return (
     <KeyboardControls map={KEYBOARD_MAP}>
       <SceneBackground />
-      {/* Ambient — keep at 1.0 with flat/NoToneMapping so colors don't clip white */}
-      <ambientLight intensity={1.0} color="#e8eeff" />
-      {/* Gentle hemisphere for ceiling-to-floor gradient */}
-      <hemisphereLight args={["#ffffff", "#aaaaaa", 0.4]} />
+      {/* Base ambient — low so overhead fixtures do the real work */}
+      <ambientLight intensity={0.5} color="#d8d0c8" />
+      {/* Hemisphere: bright ceiling / dark floor for depth */}
+      <hemisphereLight args={["#fffff0", "#403830", 0.6]} />
 
       {/* Each floor level */}
       {levels.map((level) => {
