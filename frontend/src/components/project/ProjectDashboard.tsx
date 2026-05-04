@@ -238,6 +238,11 @@ export default function ProjectDashboard() {
                       <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
                         Elevation: {level.floor_elevation}m
                       </div>
+                      {level.parse_status === "failed" && (level as any).parse_error && (
+                        <div className="text-xs mt-1 font-mono break-all" style={{ color: "#fca5a5" }}>
+                          {(level as any).parse_error}
+                        </div>
+                      )}
                     </div>
                     <StatusBadge status={level.parse_status} />
                     {level.parse_status === "needs_review" && (

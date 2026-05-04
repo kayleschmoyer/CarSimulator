@@ -133,6 +133,7 @@ class GarageLevel(BaseModel):
     source_image_url: str = ""
     processed_image_url: str = ""
     parse_status: str = "pending"  # pending | processing | complete | needs_review | failed
+    parse_error: Optional[str] = None
     scale_meters_per_pixel: float = 0.01
     origin_pixel: Vector2 = Vector2(x=0, y=0)
     geometry: LevelGeometry = LevelGeometry()

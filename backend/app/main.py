@@ -32,3 +32,23 @@ app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads"
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/check-key")
+def check_key():
+    """Quick diagnostic — tests whether the API key is loaded and valid."""
+    key = settings.anthropic_api_key
+    if not key or key == "your-api-key-here":
+        return {"ok": False, "error": "ANTHROPIC_API_KEY is not set in .env"}
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        # Minimal test call
+        client.messages.create(
+            model=settings.claude_model,
+            max_tokens=10,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        return {"ok": True, "model": settings.claude_model, "key_prefix": key[:16] + "..."}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "key_prefix": key[:16] + "..."}
