@@ -204,25 +204,134 @@ function PerimeterStripes({ elevation }: { elevation: number }) {
   );
 }
 
-// ── Ramp ──────────────────────────────────────────────────────────────────────
+// ── Ramp — tilted surface with markings ───────────────────────────────────────
 function RampMesh({ ramp }: { ramp: GarageLevel["geometry"]["ramp_regions"][0] }) {
-  const geo = useMemo(() => {
-    if (ramp.polygon.length < 3) return null;
-    const shape = new THREE.Shape();
-    shape.moveTo(ramp.polygon[0].x, ramp.polygon[0].y);
-    for (let i = 1; i < ramp.polygon.length; i++) shape.lineTo(ramp.polygon[i].x, ramp.polygon[i].y);
-    shape.closePath();
-    const g = new THREE.ShapeGeometry(shape, 8);
-    g.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
-    return g;
+  const { geo, minX, maxX, minZ, maxZ, startY, endY } = useMemo(() => {
+    const xs = ramp.polygon.map((p) => p.x);
+    const zs = ramp.polygon.map((p) => p.y);
+    const minX = Math.min(...xs); const maxX = Math.max(...xs);
+    const minZ = Math.min(...zs); const maxZ = Math.max(...zs);
+    const startY = ramp.start_elevation ?? 0;
+    const endY   = ramp.end_elevation   ?? startY + 3;
+
+    // Subdivided plane so slope is smooth (16 segments along Z)
+    const segsX = 4; const segsZ = 16;
+    const positions: number[] = [];
+    const normals:   number[] = [];
+    const uvs:       number[] = [];
+    const indices:   number[] = [];
+
+    for (let iz = 0; iz <= segsZ; iz++) {
+      for (let ix = 0; ix <= segsX; ix++) {
+        const tx = ix / segsX;
+        const tz = iz / segsZ;
+        const x = minX + tx * (maxX - minX);
+        const z = minZ + tz * (maxZ - minZ);
+        const y = startY + tz * (endY - startY);
+        positions.push(x, y, z);
+        normals.push(0, 1, 0);
+        uvs.push(tx, tz);
+      }
+    }
+    for (let iz = 0; iz < segsZ; iz++) {
+      for (let ix = 0; ix < segsX; ix++) {
+        const a = iz * (segsX + 1) + ix;
+        const b = a + 1;
+        const c = a + segsX + 1;
+        const d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    g.setAttribute("normal",   new THREE.Float32BufferAttribute(normals,   3));
+    g.setAttribute("uv",       new THREE.Float32BufferAttribute(uvs,       2));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+    return { geo: g, minX, maxX, minZ, maxZ, startY, endY };
   }, [ramp.id]);
-  if (!geo) return null;
+
+  const midX = (minX + maxX) / 2;
+  const midZ = (minZ + maxZ) / 2;
+  const isUp = (endY ?? 0) > (startY ?? 0);
+
+  // Arrow stripe positions along ramp
+  const arrowStripes = useMemo(() => {
+    const out = [];
+    for (let t = 0.15; t < 0.9; t += 0.25) {
+      out.push(t);
+    }
+    return out;
+  }, []);
+
   return (
-    <mesh geometry={geo}>
-      <meshStandardMaterial color="#a8a098" roughness={0.9} side={THREE.DoubleSide} />
-    </mesh>
+    <group>
+      {/* Ramp surface — yellow-tinted asphalt so it stands out */}
+      <mesh geometry={geo} receiveShadow>
+        <meshStandardMaterial color="#c8b84a" roughness={0.9} metalness={0} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Black/yellow chevron stripes across ramp */}
+      {arrowStripes.map((t, i) => {
+        const z = minZ + t * (maxZ - minZ);
+        const y = startY + t * (endY - startY) + 0.02;
+        return (
+          <mesh key={i} position={[midX, y, z]}>
+            <boxGeometry args={[maxX - minX, 0.02, 0.4]} />
+            <meshStandardMaterial color={i % 2 === 0 ? "#f5c518" : "#1a1a1a"} roughness={0.5} />
+          </mesh>
+        );
+      })}
+
+      {/* Low curb walls on sides of ramp */}
+      {[minX, maxX].map((x, i) => {
+        const positions2: number[] = [];
+        const segs = 20;
+        for (let s = 0; s <= segs; s++) {
+          const t = s / segs;
+          const z = minZ + t * (maxZ - minZ);
+          const y = startY + t * (endY - startY);
+          positions2.push(x, y, z, x, y + 0.3, z);
+        }
+        // Build curb as a series of thin boxes
+        return Array.from({ length: segs }, (_, s) => {
+          const t = (s + 0.5) / segs;
+          const z = minZ + t * (maxZ - minZ);
+          const y = startY + t * (endY - startY) + 0.15;
+          const len = (maxZ - minZ) / segs + 0.02;
+          return (
+            <mesh key={`curb_${i}_${s}`} position={[x, y, z]}>
+              <boxGeometry args={[0.15, 0.3, len]} />
+              <meshStandardMaterial color="#f5c518" roughness={0.6} />
+            </mesh>
+          );
+        });
+      })}
+
+      {/* RAMP UP / RAMP DOWN sign at entry */}
+      <group position={[midX, startY + 2.2, minZ - 1]}>
+        <mesh>
+          <boxGeometry args={[2.0, 0.5, 0.08]} />
+          <meshStandardMaterial color={isUp ? "#005500" : "#550000"} roughness={0.4}
+            emissive={isUp ? "#00aa00" : "#aa0000"} emissiveIntensity={0.5} />
+        </mesh>
+        <mesh position={[0, 0, 0.05]}>
+          <boxGeometry args={[2.1, 0.6, 0.01]} />
+          <meshStandardMaterial color="#ffffff" roughness={0.5} />
+        </mesh>
+      </group>
+
+      {/* Arrow on floor at ramp entry */}
+      <mesh position={[midX, startY + 0.02, minZ - 2]}>
+        <boxGeometry args={[1.5, 0.02, 2.5]} />
+        <meshStandardMaterial color={isUp ? "#00cc44" : "#cc4400"} roughness={0.5}
+          emissive={isUp ? "#00aa33" : "#aa3300"} emissiveIntensity={0.3} />
+      </mesh>
+    </group>
   );
 }
+
 
 // ── Camera marker ─────────────────────────────────────────────────────────────
 function CameraMarker({ camera, levelElevation }: { camera: CameraFeature; levelElevation: number }) {
