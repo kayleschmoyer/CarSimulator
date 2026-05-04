@@ -150,18 +150,21 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
               className="w-full h-full object-contain"
               style={{ display: "block" }}
             />
-            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+            {/* viewBox 0 0 100 100 so translate values are plain 0–100 numbers */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
               {cameras.map((cam) => {
                 const rw = imgRef.current?.naturalWidth || 1;
                 const rh = imgRef.current?.naturalHeight || 1;
                 const rx = ((cam.position.x / level.scale_meters_per_pixel + level.origin_pixel.x) / rw) * 100;
                 const ry = ((cam.position.y / level.scale_meters_per_pixel + level.origin_pixel.y) / rh) * 100;
+                if (!isFinite(rx) || !isFinite(ry)) return null;
                 const col = cam.source === "manual" ? "#10b981" : cam.confidence > 0.85 ? "#10b981" : cam.confidence > 0.6 ? "#f59e0b" : "#ef4444";
                 return (
-                  <g key={cam.id} transform={`translate(${rx}%, ${ry}%)`}>
-                    <circle r="7" fill={col} fillOpacity="0.25" stroke={col} strokeWidth="1.5" />
-                    <line x1="0" y1="-10" x2="0" y2="-4" stroke={col} strokeWidth="1.5" />
-                    <text y="-13" fontSize="5.5" fill={col} textAnchor="middle" fontFamily="Inter,sans-serif">CAM</text>
+                  <g key={cam.id} transform={`translate(${rx} ${ry})`}>
+                    <circle r="0.8" fill={col} fillOpacity="0.25" stroke={col} strokeWidth="0.2" />
+                    <line x1="0" y1="-1.2" x2="0" y2="-0.5" stroke={col} strokeWidth="0.2" />
+                    <text y="-1.5" fontSize="0.7" fill={col} textAnchor="middle" fontFamily="Inter,sans-serif">CAM</text>
                   </g>
                 );
               })}
@@ -170,10 +173,11 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
                 const rh = imgRef.current?.naturalHeight || 1;
                 const rx = ((sign.position.x / level.scale_meters_per_pixel + level.origin_pixel.x) / rw) * 100;
                 const ry = ((sign.position.y / level.scale_meters_per_pixel + level.origin_pixel.y) / rh) * 100;
+                if (!isFinite(rx) || !isFinite(ry)) return null;
                 return (
-                  <g key={sign.id} transform={`translate(${rx}%, ${ry}%)`}>
-                    <rect x="-9" y="-6" width="18" height="12" fill="rgba(59,130,246,0.3)" stroke="#3b82f6" strokeWidth="1.5" rx="2" />
-                    <text fontSize="5" fill="#93c5fd" textAnchor="middle" dy="2" fontFamily="Inter,sans-serif">SGN</text>
+                  <g key={sign.id} transform={`translate(${rx} ${ry})`}>
+                    <rect x="-1.2" y="-0.8" width="2.4" height="1.6" fill="rgba(59,130,246,0.3)" stroke="#3b82f6" strokeWidth="0.2" rx="0.2" />
+                    <text fontSize="0.6" fill="#93c5fd" textAnchor="middle" dy="0.3" fontFamily="Inter,sans-serif">SGN</text>
                   </g>
                 );
               })}

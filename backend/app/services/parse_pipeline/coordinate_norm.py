@@ -85,7 +85,7 @@ def build_normalized_geometry(raw_geometry: dict) -> tuple[dict, float, tuple[fl
             }
             for w in raw_geometry.get("walls", [])
         ],
-        "driving_lanes": [
+        "lanes": [
             {
                 "id": l["id"],
                 "polygon": norm_poly(l.get("polygon", [])),

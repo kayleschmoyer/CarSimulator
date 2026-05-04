@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Wall } from "../../types/garage";
 
 export function buildWallGeometry(walls: Wall[]): THREE.BufferGeometry {
+  if (!walls || !Array.isArray(walls)) return new THREE.BufferGeometry();
   const geometries: THREE.BufferGeometry[] = [];
 
   for (const wall of walls) {

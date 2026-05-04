@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { DrivingLane } from "../../types/garage";
 
 export function buildLaneGeometry(lanes: DrivingLane[], elevation: number): THREE.BufferGeometry {
+  if (!lanes || !Array.isArray(lanes)) return new THREE.BufferGeometry();
   const geometries: THREE.BufferGeometry[] = [];
 
   for (const lane of lanes) {
