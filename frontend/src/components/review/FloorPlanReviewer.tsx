@@ -88,7 +88,7 @@ export default function FloorPlanReviewer({ projectId, level, onApprove }: Props
           <span className="text-lg leading-none mt-0.5">⚠</span>
           <div>
             <div className="text-sm font-semibold" style={{ color: "#fbbf24" }}>Demo Mode — Simulated Detections</div>
-            <div className="text-xs mt-0.5" style={{ color: "#92400e", color: "#d97706" }}>
+            <div className="text-xs mt-0.5" style={{ color: "#d97706" }}>
               No API key is set, so these cameras and signs are <strong>pre-built demo data</strong> — they do not reflect your uploaded drawing.
               Add <code className="px-1 rounded text-xs" style={{ background: "rgba(0,0,0,0.3)" }}>ANTHROPIC_API_KEY</code> to <code className="px-1 rounded text-xs" style={{ background: "rgba(0,0,0,0.3)" }}>backend/.env</code> for real AI detection.
               You can still drive the demo simulation below.
