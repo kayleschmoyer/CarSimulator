@@ -25,12 +25,17 @@ def extract_text_labels(image_path: str) -> list[dict]:
     """
     Run OCR on floor plan and return list of detected text labels with positions.
     Each result: {text, x, y, width, height, confidence, feature_type}
+    Returns empty list if Tesseract binary is not installed — OCR is optional.
     """
     if not OCR_AVAILABLE:
         return []
 
-    img = Image.open(image_path)
-    data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    try:
+        img = Image.open(image_path)
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+    except Exception:
+        # Tesseract binary not in PATH — skip OCR, Claude vision handles text detection
+        return []
 
     results = []
     for i, text in enumerate(data["text"]):
