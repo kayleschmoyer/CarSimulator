@@ -18,6 +18,21 @@ except ImportError:
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".bmp", ".jpg", ".jpeg", ".tiff", ".tif"}
 
 
+def extract_pdf_pages(file_path: str, output_dir: str) -> list[str]:
+    """Extract every page of a PDF as a separate PNG. Returns list of paths."""
+    if not PDF_SUPPORT:
+        raise RuntimeError("pdf2image not available; install poppler-utils")
+    pages = convert_from_path(file_path, dpi=300)
+    if not pages:
+        raise ValueError("PDF has no pages")
+    paths = []
+    for i, page in enumerate(pages):
+        out = os.path.join(output_dir, f"page_{i + 1}_{uuid.uuid4().hex[:8]}.png")
+        page.save(out, "PNG")
+        paths.append(out)
+    return paths
+
+
 def ingest_file(file_path: str, output_dir: str) -> str:
     """
     Convert uploaded file to a clean PNG. Returns path to the output PNG.
@@ -37,7 +52,6 @@ def ingest_file(file_path: str, output_dir: str) -> str:
         pages = convert_from_path(file_path, dpi=300)
         if not pages:
             raise ValueError("PDF has no pages")
-        # Use first page (caller should split multi-page PDFs per level)
         pages[0].save(out_path, "PNG")
     else:
         img = Image.open(file_path)

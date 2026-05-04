@@ -9,6 +9,7 @@ from app.config import settings
 from app.models.schema.garage import GarageLevel, UpdateFeatureRequest
 from app.api.routes.projects import get_project_store
 from app.services.parse_pipeline.orchestrator import run_parse_pipeline
+from app.services.parse_pipeline.ingest import extract_pdf_pages
 
 router = APIRouter(prefix="/projects/{project_id}/levels", tags=["levels"])
 
@@ -105,6 +106,75 @@ async def upload_level(
     )
 
     return level
+
+
+@router.post("/batch", response_model=list[GarageLevel])
+async def upload_pdf_batch(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    base_name: str = Form("Level"),
+    base_elevation: float = Form(0.0),
+    elevation_step: float = Form(3.0),
+    file: UploadFile = File(...),
+):
+    """Upload a multi-page PDF and create one level per page automatically."""
+    store = get_project_store()
+    if project_id not in store:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Batch import requires a PDF file")
+
+    upload_dir = os.path.join(settings.upload_dir, project_id)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # Save the uploaded PDF
+    pdf_id = str(uuid.uuid4())
+    pdf_path = os.path.join(upload_dir, f"{pdf_id}.pdf")
+    async with aiofiles.open(pdf_path, "wb") as f:
+        await f.write(await file.read())
+
+    # Extract pages (blocking — run in thread)
+    loop = asyncio.get_event_loop()
+    try:
+        page_paths = await loop.run_in_executor(
+            None, lambda: extract_pdf_pages(pdf_path, upload_dir)
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF extraction failed: {exc}")
+
+    created_levels = []
+    existing_count = len(store[project_id]["levels"])
+
+    for i, page_path in enumerate(page_paths):
+        level_num = existing_count + i + 2  # Level 02, 03, ...
+        display_name = f"{base_name} {level_num:02d}"
+        floor_elevation = base_elevation + i * elevation_step
+        level_id = str(uuid.uuid4())
+
+        level = {
+            "id": level_id,
+            "display_name": display_name,
+            "floor_elevation": floor_elevation,
+            "source_image_url": page_path,
+            "processed_image_url": "",
+            "parse_status": "processing",
+            "scale_meters_per_pixel": 0.033,
+            "origin_pixel": {"x": 0, "y": 0},
+            "geometry": {"walls": [], "lanes": [], "ramp_regions": [], "columns": [], "perimeter_openings": []},
+            "features": {"cameras": [], "signs": [], "entry_points": [], "exit_points": [], "pedestrian_paths": []},
+            "nav_graph": {"nodes": [], "edges": []},
+        }
+        store[project_id]["levels"].append(level)
+        created_levels.append(level)
+
+        background_tasks.add_task(
+            _run_parse_background,
+            page_path, level_id, floor_elevation, upload_dir, project_id, display_name,
+        )
+
+    store[project_id]["metadata"]["total_levels"] = len(store[project_id]["levels"])
+    return created_levels
 
 
 @router.get("/{level_id}", response_model=GarageLevel)
